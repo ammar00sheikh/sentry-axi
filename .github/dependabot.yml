@@ -1,0 +1,42 @@
+version: 2
+
+# The `Require no-mistakes` workflow exempts dependabot[bot] from the PR gate,
+# which only means anything if Dependabot is actually configured. It is grouped
+# into one PR per ecosystem per week: a stream of one-PR-per-dependency would
+# drown the release-please PR, which is the one that matters.
+updates:
+  - package-ecosystem: npm
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 3
+    groups:
+      dev-dependencies:
+        dependency-type: development
+      production-dependencies:
+        dependency-type: production
+    commit-message:
+      # Conventional commits, so release-please attributes the bump correctly.
+      # Dev-dependency bumps use `chore:` so they never trigger a release on
+      # their own; runtime bumps use `fix:` because they do ship to users.
+      prefix: fix
+      prefix-development: chore
+      include: scope
+
+  # The benchmark harness is a separate package with its own lockfile.
+  - package-ecosystem: npm
+    directory: "/bench"
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 2
+    commit-message:
+      prefix: chore
+      include: scope
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: monthly
+    commit-message:
+      prefix: chore
+      include: scope

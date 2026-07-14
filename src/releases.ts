@@ -50,11 +50,11 @@ export async function listReleases(
   api: SentryApi,
   limit = 20,
 ): Promise<SentryRelease[]> {
+  // Org-wide on purpose: releases are an org-level concept and are routinely
+  // shared across projects, so scoping this to the pinned project would hide
+  // the very release an agent is looking for.
   return api.request<SentryRelease[]>(`/organizations/${api.org}/releases/`, {
-    query: {
-      ...(api.project ? { project: undefined } : {}),
-      per_page: Math.min(limit, 100),
-    },
+    query: { per_page: Math.min(limit, 100) },
     paginate: true,
     limit,
   });
