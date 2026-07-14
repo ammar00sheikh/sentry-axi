@@ -1,0 +1,92 @@
+{
+  "id": "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4",
+  "eventID": "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4",
+  "groupID": "4509172",
+  "title": "TypeError: Cannot read properties of undefined (reading 'name')",
+  "platform": "javascript",
+  "dateCreated": "2026-07-14T09:00:00.000Z",
+  "release": { "version": "4.2.0" },
+  "user": { "id": "1042", "email": "alice@acme.com" },
+  "sdk": { "name": "sentry.javascript.react", "version": "7.100.0" },
+  "entries": [
+    {
+      "type": "exception",
+      "data": {
+        "values": [
+          {
+            "type": "TypeError",
+            "value": "Cannot read properties of undefined (reading 'name')",
+            "mechanism": { "type": "onerror", "handled": false },
+            "stacktrace": {
+              "frames": [
+                {
+                  "filename": "node_modules/react-dom/cjs/react-dom.production.js",
+                  "function": "renderWithHooks",
+                  "lineNo": 11212,
+                  "colNo": 18,
+                  "inApp": false
+                },
+                {
+                  "filename": "node_modules/react-dom/cjs/react-dom.production.js",
+                  "function": "beginWork",
+                  "lineNo": 12044,
+                  "colNo": 12,
+                  "inApp": false
+                },
+                {
+                  "filename": "app/pages/Profile.tsx",
+                  "function": "Profile",
+                  "lineNo": 18,
+                  "colNo": 5,
+                  "inApp": true
+                },
+                {
+                  "filename": "app/components/UserCard.tsx",
+                  "function": "UserCard",
+                  "lineNo": 42,
+                  "colNo": 21,
+                  "inApp": true,
+                  "context": [
+                    [40, "export function UserCard({ user }: Props) {"],
+                    [41, "  return ("],
+                    [42, "    <div className=\"card\">{user.name}</div>"],
+                    [43, "  );"],
+                    [44, "}"]
+                  ]
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "type": "breadcrumbs",
+      "data": {
+        "values": [
+          {
+            "timestamp": "2026-07-14T08:59:58.100Z",
+            "type": "navigation",
+            "category": "navigation",
+            "level": "info",
+            "message": "/users -> /users/1042"
+          },
+          {
+            "timestamp": "2026-07-14T08:59:59.400Z",
+            "type": "http",
+            "category": "fetch",
+            "level": "info",
+            "data": { "method": "GET", "url": "/api/users/1042", "status_code": 200 }
+          },
+          {
+            "timestamp": "2026-07-14T08:59:59.900Z",
+            "type": "error",
+            "category": "console",
+            "level": "error",
+            "message": "Cannot read properties of undefined"
+          }
+        ]
+      }
+    }
+  ]
+}
