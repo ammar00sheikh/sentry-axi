@@ -1,0 +1,231 @@
+# Benchmark tasks.
+#
+# Placeholders substituted by the runner:
+#   __ORG__      — slug of the throwaway bench org (SENTRY_BENCH_ORG)
+#   __PROJECT__  — slug of the throwaway bench project (SENTRY_BENCH_PROJECT)
+#   __ASSIGNEE__ — Sentry username/email the assignment task assigns to
+#
+# The grading hints below are the ground truth of the seeded fixture
+# (bench/scripts/setup-fixture.sh). Re-seed before a matrix run.
+#
+#   most FREQUENT issue : TypeError "Cannot read properties of undefined
+#                         (reading 'total')" — 12 events, 8 users,
+#                         src/checkout/cart.js, first seen in release 4.2.0
+#   most USERS affected : TimeoutError "payment gateway did not respond
+#                         within 30s" — 9 events, 9 users,
+#                         src/payments/gateway.py, release 4.1.0
+#   also seeded         : NullPointerException (3 events/3 users,
+#                         com/example/auth/Session.java), RateLimitExceeded
+#                         (2 events/1 user, src/api/client.ts),
+#                         ImageDecodeError (1 event/1 user, src/media/decode.rs)
+#   slowest transaction : GET /checkout (~3.2s), then GET /api/search (~0.4s),
+#                         then GET /home (~0.12s)
+#
+# Frequency and user count deliberately disagree: an agent that skims the
+# issue list and answers "top issue" for both questions fails task
+# `most_users_affected`.
+#
+# Categories:
+#   mutating — writes back to Sentry. The runner snapshots issue
+#              status/assignee before the run and restores it afterwards, so
+#              repeats are not handed an easier, already-triaged project.
+#   refs     — exercises AXI's generation-stamped refs and pinned session
+#              scope. The Sentry MCP is stateless (every call carries its own
+#              org/project/issue id) and has no equivalent, so these declare
+#              applicable_conditions and are reported N/A for sentry-mcp
+#              rather than failed.
+
+tasks:
+  unresolved_count_24h:
+    category: single_step
+    prompt: >-
+      Using the Sentry project __ORG__/__PROJECT__, report how many unresolved
+      issues it has in the last 24 hours. Answer with just the number.
+    grading:
+      grading_hint: >-
+        The seeded fixture has exactly 5 unresolved issues, all first seen
+        within the last 24 hours. The agent must have listed them from Sentry,
+        not guessed.
+
+  top_error_stacktrace:
+    category: investigation
+    prompt: >-
+      In the Sentry project __ORG__/__PROJECT__, find the most frequent error
+      (the issue with the most events) and report (1) its exception type and
+      message and (2) the top frame of its stack trace — file, function and
+      line.
+    grading:
+      grading_hint: >-
+        The most frequent issue is a TypeError, "Cannot read properties of
+        undefined (reading 'total')", with 12 events. Its top (crashing) frame
+        is in src/checkout/cart.js, function calculateTotal, line 42. PASS
+        requires the stack trace to have been fetched from Sentry.
+
+  most_users_affected:
+    category: investigation
+    prompt: >-
+      In the Sentry project __ORG__/__PROJECT__, find the issue affecting the
+      most users (not the one with the most events — the one with the highest
+      distinct user count) and say which source file its exception is thrown
+      from.
+    grading:
+      grading_hint: >-
+        The most-users issue is the TimeoutError "payment gateway did not
+        respond within 30s" — 9 distinct users across 9 events, thrown from
+        src/payments/gateway.py. The most-events issue is a different one (a
+        TypeError in src/checkout/cart.js: 12 events but only 8 users) —
+        answering with that one is a FAIL.
+
+  top_error_release:
+    category: investigation
+    prompt: >-
+      In the Sentry project __ORG__/__PROJECT__, determine which release
+      introduced the most frequent error (the issue with the most events).
+      Report the release version.
+    grading:
+      grading_hint: >-
+        The most frequent issue (TypeError in src/checkout/cart.js) was first
+        seen in release 4.2.0; every other seeded issue belongs to 4.1.0. PASS
+        requires 4.2.0, sourced from the issue's first-seen release / release
+        data in Sentry.
+
+  breadcrumbs_top_crash:
+    category: investigation
+    prompt: >-
+      In the Sentry project __ORG__/__PROJECT__, summarize the breadcrumbs
+      leading up to the latest event of the most frequent error. List them in
+      order.
+    grading:
+      grading_hint: >-
+        The seeded breadcrumb trail on the TypeError issue is, in order:
+        navigation to /cart, a UI click on "Checkout", an HTTP GET to
+        /api/cart (200), and an HTTP POST to /api/checkout that returned 500.
+        PASS requires the breadcrumbs to have been read from the event, in
+        roughly this order.
+
+  slowest_transaction:
+    category: single_step
+    prompt: >-
+      Using the Sentry project __ORG__/__PROJECT__, report which transaction
+      is the slowest and roughly how long it takes.
+    grading:
+      grading_hint: >-
+        The slowest seeded transaction is GET /checkout at roughly 3.2
+        seconds; the others are GET /api/search (~0.4s) and GET /home
+        (~0.12s). PASS requires the transaction name and an approximately
+        correct duration read from Sentry performance data.
+
+  seer_root_cause:
+    category: investigation
+    prompt: >-
+      In the Sentry project __ORG__/__PROJECT__, run Sentry's Seer AI
+      root-cause analysis on the most frequent error and report the root cause
+      it identifies, in two or three sentences.
+    grading:
+      grading_hint: >-
+        PASS requires Seer to have actually been invoked on the most frequent
+        issue (the TypeError in src/checkout/cart.js) and its returned
+        analysis to be summarized. The exact wording of Seer's output varies —
+        grade on whether the agent ran Seer and reported what it said, not on
+        matching a fixed string. Summarizing the stack trace without running
+        Seer is a FAIL.
+
+  search_release_query:
+    category: single_step
+    prompt: >-
+      Using Sentry search syntax against __ORG__/__PROJECT__, find the
+      unresolved issues belonging to release 4.2.0. Report how many there are
+      and their titles.
+    grading:
+      grading_hint: >-
+        Exactly one seeded issue belongs to release 4.2.0 — the TypeError
+        "Cannot read properties of undefined (reading 'total')". PASS requires
+        a search (query like `is:unresolved release:4.2.0`) rather than
+        listing everything and eyeballing it.
+
+  tags_top_issue:
+    category: single_step
+    prompt: >-
+      In the Sentry project __ORG__/__PROJECT__, report the most common
+      browser and the most common operating system among the events of the
+      most frequent error.
+    grading:
+      grading_hint: >-
+        The seeded tag distribution on the TypeError issue is dominated by
+        browser Chrome and os Windows. PASS requires the tag breakdown to have
+        been fetched from Sentry.
+
+  events_of_top_issue:
+    category: multi_step
+    prompt: >-
+      In the Sentry project __ORG__/__PROJECT__, find the most frequent error,
+      list its events, and report (1) how many events it has and (2) the user
+      associated with its most recent event.
+    grading:
+      grading_hint: >-
+        The most frequent issue (TypeError, src/checkout/cart.js) has 12
+        events across 8 users; the most recent seeded event belongs to user
+        bench-user-8 (email bench-user-8@example.com). PASS requires both
+        parts, read from Sentry.
+
+  resolve_top_issue:
+    category: mutating
+    mutating: true
+    prompt: >-
+      In the Sentry project __ORG__/__PROJECT__, mark the most frequent error
+      (the issue with the most events) as resolved, then confirm from Sentry
+      that its status is now resolved.
+    grading:
+      grading_hint: >-
+        The issue to resolve is the TypeError "Cannot read properties of
+        undefined (reading 'total')" in src/checkout/cart.js. PASS requires
+        the resolve call to have succeeded against THAT issue and the new
+        status to be confirmed rather than assumed. Resolving a different
+        issue is a FAIL. (The harness reverts the issue to unresolved after
+        the run.)
+
+  assign_top_issue:
+    category: mutating
+    mutating: true
+    prompt: >-
+      In the Sentry project __ORG__/__PROJECT__, assign the issue affecting
+      the most users to __ASSIGNEE__, then confirm from Sentry that the
+      assignment took effect.
+    grading:
+      grading_hint: >-
+        The issue to assign is the TimeoutError "payment gateway did not
+        respond within 30s" (9 users / 9 events, src/payments/gateway.py) —
+        NOT the most-events TypeError (12 events, 8 users). PASS requires the assignment to have succeeded
+        against that issue and to be confirmed from Sentry. (The harness
+        unassigns it after the run.)
+
+  refs_cross_command:
+    category: refs
+    applicable_conditions: [sentry-axi]
+    prompt: >-
+      List the issues in __ORG__/__PROJECT__ once. Then, using only the refs
+      printed by that listing (do not list, search for, or look up the issues
+      again), open the second issue in the list, show its stack trace, and
+      show its tags. Report the ref you used, the issue title, and the top
+      stack frame.
+    grading:
+      grading_hint: >-
+        PASS requires exactly one listing command, followed by ref-addressed
+        commands (`sentry-axi issue @g1:2`, `stacktrace @g1:2`, `tags @g1:2`)
+        that resolved to the second issue of that listing. Re-listing or
+        re-searching to recover an id is a FAIL.
+
+  refs_scoped_session:
+    category: refs
+    applicable_conditions: [sentry-axi]
+    prompt: >-
+      Pin your Sentry scope to __ORG__/__PROJECT__ once, then — without
+      passing the org or project again on any subsequent command — list the
+      issues, open the top one, and report its title and event count.
+    grading:
+      grading_hint: >-
+        PASS requires a single `sentry-axi use __ORG__/__PROJECT__` followed by
+        `issues` and `issue @<ref>` with no --org/--project flags, and a title
+        and event count read from that output. The top issue by events is the
+        TypeError "Cannot read properties of undefined (reading 'total')" with
+        12 events.

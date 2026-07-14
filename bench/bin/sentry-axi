@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# Bench shim: exposes the repo's sentry-axi as a PATH binary for benchmark
+# agents. Prefers the built dist, falls back to tsx over the sources.
+set -euo pipefail
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+if [ -f "$REPO_ROOT/dist/bin/sentry-axi.js" ]; then
+  exec node "$REPO_ROOT/dist/bin/sentry-axi.js" "$@"
+fi
+exec npx tsx "$REPO_ROOT/bin/sentry-axi.ts" "$@"

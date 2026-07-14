@@ -1,0 +1,71 @@
+# Benchmark conditions — each defines how the agent triages a Sentry project.
+#
+# Neither condition needs a daemon: sentry-axi talks to the Sentry REST API
+# directly (its "session" is just on-disk scope + refs, reaped by the runner
+# after every run), and the Sentry MCP server is a remote HTTP endpoint the
+# agent process connects to per run. Both authenticate with the same
+# SENTRY_AUTH_TOKEN against the same throwaway bench project, and both learn
+# the org/project from the task prompt.
+
+conditions:
+  sentry-axi:
+    name: "Sentry AXI (CLI wrapper)"
+    tool: sentry-axi
+    agents_md: |
+      # Tools
+
+      You have the `sentry-axi` CLI installed for inspecting and triaging
+      Sentry issues. Use it for all Sentry work. Do NOT use `sentry-cli`,
+      curl, or any other way of reaching the Sentry API directly.
+
+      Run `sentry-axi --help` for available commands and usage.
+
+      Notes:
+      - Pin the scope once with `sentry-axi use <org>/<project>`; later
+        commands then need no --org/--project flags.
+      - Listing commands (`issues`, `search`, `events`, `releases`) print
+        generation-stamped refs like `@g1:3`. Pass those refs to the commands
+        that take one (`issue`, `stacktrace`, `tags`, `breadcrumbs`, `seer`,
+        `resolve`, `assign`).
+    daemon: none
+    command_policy:
+      require_any_prefix: ["sentry-axi"]
+      forbid_any_prefix:
+        - "sentry-cli"
+        - "curl"
+        - "wget"
+        - "http"
+        - "httpie"
+        - "python"
+        - "python3"
+        - "node"
+      forbid_substrings:
+        - "/api/0/"
+        - "sentry.io/api"
+
+  sentry-mcp:
+    name: "Sentry MCP server (raw tools)"
+    tool: mcp
+    agents_md: |
+      # Tools
+
+      You have Sentry's official remote MCP server with tools for finding
+      organizations and projects, searching issues and events, reading issue
+      details and stack traces, running Seer root-cause analysis, and updating
+      issues (resolve / assign). Use the available MCP tools for all Sentry
+      work. Do NOT use `sentry-cli`, curl, or any other way of reaching the
+      Sentry API directly.
+
+      Notes:
+      - Sentry tools are org- and project-scoped: pass the organization and
+        project slugs given in the task on each call.
+      - Issues are addressed by their Sentry short id (e.g. PROJECT-1A2B) or
+        issue id — there is no session that remembers a previous listing.
+    daemon: none
+    mcp_config:
+      mcpServers:
+        sentry:
+          type: http
+          url: "https://mcp.sentry.dev/mcp"
+          headers:
+            Authorization: "Bearer ${SENTRY_AUTH_TOKEN}"
