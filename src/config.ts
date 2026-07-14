@@ -154,11 +154,28 @@ function scopeFile(session?: string): string {
   return join(resolveSessionStateDir(session), "scope.json");
 }
 
-/** Persist a token from `sentry-axi login --token <t>`. */
-export function writeToken(token: string, session?: string): void {
+/**
+ * Persist credentials from `sentry-axi login`.
+ *
+ * The URL is stored **with** the token, because they belong together: a token
+ * is only valid against the instance that issued it. Storing the token alone
+ * meant a self-hosted user logged in successfully and then had every later
+ * command silently talk to sentry.io, where their token is meaningless - which
+ * surfaces as "Invalid token" and sends them off to regenerate a token that was
+ * never the problem.
+ */
+export function writeToken(
+  token: string,
+  url?: string,
+  session?: string,
+): void {
   const file = authFile(session);
   mkdirSync(dirname(file), { recursive: true });
-  writeFileSync(file, JSON.stringify({ token }), { mode: 0o600 });
+  writeFileSync(
+    file,
+    JSON.stringify({ token, ...(url ? { url: normalizeUrl(url) } : {}) }),
+    { mode: 0o600 },
+  );
 }
 
 export function readStoredToken(session?: string): string | null {
@@ -167,6 +184,18 @@ export function readStoredToken(session?: string): string | null {
     if (!raw) return null;
     const data = JSON.parse(raw);
     return typeof data?.token === "string" ? data.token : null;
+  } catch {
+    return null;
+  }
+}
+
+/** The API URL stored beside the token by `login --url`. */
+export function readStoredUrl(session?: string): string | null {
+  try {
+    const raw = readFileIfExists(authFile(session));
+    if (!raw) return null;
+    const data = JSON.parse(raw);
+    return typeof data?.url === "string" ? data.url : null;
   } catch {
     return null;
   }
@@ -208,9 +237,14 @@ export function resolveToken(session?: string): string | null {
   return fromFile?.trim() || null;
 }
 
-export function resolveApiUrl(): string {
+export function resolveApiUrl(session?: string): string {
   const env = process.env.SENTRY_AXI_URL || process.env.SENTRY_URL;
   if (env?.trim()) return normalizeUrl(env.trim());
+
+  // The URL saved by `login --url` - checked before .sentryclirc so that an
+  // explicit login always wins over a stale config file lying around the repo.
+  const stored = readStoredUrl(session);
+  if (stored?.trim()) return normalizeUrl(stored.trim());
 
   const discovered = discoveredConfig();
   const fromFile = discovered["defaults.url"];

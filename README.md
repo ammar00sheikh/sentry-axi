@@ -197,11 +197,19 @@ Installs a `SessionStart` hook for **Claude Code**, **Codex**, and **OpenCode**.
 
 ## Self-Hosted Sentry
 
+Pass your instance URL at login. It is stored **with** the token, because a token is only valid against the instance that issued it — so you set it once and never think about it again:
+
 ```sh
-export SENTRY_AXI_URL=https://sentry.internal.acme.com
+sentry-axi login --token <token> --url https://sentry.internal.acme.com
+sentry-axi use acme/backend
+sentry-axi issues
 ```
 
-Everything else is identical. `sentry-axi doctor` reports the resolved URL, token, and scope — and where each value came from.
+No environment variables needed. (`SENTRY_AXI_URL` still works and overrides the stored value, which is what CI should use.)
+
+Create the token at `<your-instance>/settings/account/api/auth-tokens/`, not sentry.io.
+
+`sentry-axi doctor` reports the resolved URL, token, and scope — and where each value came from. It is the first thing to run when anything looks wrong.
 
 ## Development
 

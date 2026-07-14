@@ -141,20 +141,29 @@ tips:
 `;
 
 const COMMAND_HELP: Record<string, string> = {
-  login: `usage: sentry-axi login --token <token>
-Store a Sentry auth token for this session.
+  login: `usage: sentry-axi login --token <token> [--url <instance-url>]
+Store a Sentry auth token (and, for self-hosted Sentry, the instance URL).
 
-The token is written to ~/.sentry-axi/auth.json with 0600 permissions.
-SENTRY_AUTH_TOKEN in the environment always takes precedence over it, and an
-existing .sentryclirc is picked up automatically - so if this repo is already
-set up for the official sentry-cli, you may not need to log in at all.
+The token is verified immediately, then written to ~/.sentry-axi/auth.json with
+0600 permissions.
+
+flags:
+  --url <u>  Base URL of a SELF-HOSTED Sentry, e.g. https://sentry.acme.com
+             It is stored with the token, because a token is only valid against
+             the instance that issued it. Omit for Sentry SaaS (sentry.io).
+
+SENTRY_AUTH_TOKEN in the environment always takes precedence over the stored
+token, and an existing .sentryclirc is picked up automatically - so if this repo
+is already set up for the official sentry-cli, you may not need to log in at all.
 
 Create a token at https://sentry.io/settings/account/api/auth-tokens/
+(or <your-instance>/settings/account/api/auth-tokens/ when self-hosted)
 with scopes: org:read, project:read, project:write, event:read
 
 examples:
   sentry-axi login --token sntrys_...
-  sentry-axi doctor            # confirm the token and scope resolve`,
+  sentry-axi login --token sntryu_... --url https://sentry.acme.com
+  sentry-axi doctor            # confirm the token, URL, and scope resolve`,
 
   use: `usage: sentry-axi use <org>/<project>
 Pin the org and project for later commands in this session.
@@ -586,26 +595,56 @@ async function handleLogin(args: string[]): Promise<string> {
     throw validationError(
       "A token is required",
       "Run `sentry-axi login --token <token>`",
+      "Self-hosted Sentry: `sentry-axi login --token <token> --url https://sentry.mycompany.com`",
       "Create one at https://sentry.io/settings/account/api/auth-tokens/ with scopes: org:read, project:read, project:write, event:read",
     );
   }
 
-  writeToken(token);
+  // A token is only valid against the instance that issued it, so `--url` is
+  // part of logging in - not a separate thing you have to remember to export on
+  // every later command.
+  const url = flagString(parsed, "url");
+  writeToken(token, url);
+
+  const resolvedUrl = resolveApiUrl();
 
   // Prove the token works now rather than failing on the agent's next command.
   const api = new SentryApi({
     token,
-    url: resolveApiUrl(),
-    org: "-",
+    url: resolvedUrl,
+    org: "",
     project: null,
   });
-  const orgs = await listOrgs(api);
+
+  let orgs: Awaited<ReturnType<typeof listOrgs>>;
+  try {
+    orgs = await listOrgs(api);
+  } catch (error) {
+    // The overwhelmingly common cause of a rejected token at login is a
+    // self-hosted user whose token is fine but who never said which instance it
+    // belongs to - so we verified it against sentry.io, where it means nothing.
+    if (
+      error instanceof SentryAxiError &&
+      error.code === "AUTH_INVALID" &&
+      resolvedUrl === "https://sentry.io"
+    ) {
+      throw new SentryAxiError(
+        `Sentry rejected the token at ${resolvedUrl}`,
+        "AUTH_INVALID",
+        [
+          "If this is a SELF-HOSTED Sentry, the token is not invalid - it was checked against sentry.io. Pass the instance URL: `sentry-axi login --token <token> --url https://sentry.mycompany.com`",
+          "If this is Sentry SaaS, the token has expired or was revoked - reissue it at https://sentry.io/settings/account/api/auth-tokens/",
+        ],
+      );
+    }
+    throw error;
+  }
 
   return compose(
     toon({
       login: {
         stored: "~/.sentry-axi/auth.json",
-        url: resolveApiUrl(),
+        url: resolvedUrl,
         organizations: orgs.length,
       },
     }),

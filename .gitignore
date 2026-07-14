@@ -5,3 +5,12 @@ bench/results/
 *.log
 .DS_Store
 nohup.out
+
+# Credentials. sentry-axi reads all of these, so it is exactly the kind of repo
+# where one of them gets created during testing and committed by reflex.
+# A Sentry auth token in git history is a rotate-everything event.
+.sentryclirc
+sentry.properties
+auth.json
+.env
+.env.*

@@ -237,3 +237,34 @@ describe("requireConfig", () => {
     });
   });
 });
+
+describe("self-hosted: the URL is stored with the token", () => {
+  // REGRESSION GUARD, found by running `login` against a real self-hosted
+  // instance. A token is only valid against the instance that ISSUED it, so
+  // storing the token without the URL meant login verified it against
+  // sentry.io - where it means nothing - and told the user "Invalid token".
+  // The token was fine. There was no way to even tell login about a custom host.
+  it("persists the URL alongside the token and prefers it over the default", () => {
+    writeToken("sntryu_selfhosted", "https://sentry.acme.com");
+
+    expect(resolveToken()).toBe("sntryu_selfhosted");
+    expect(resolveApiUrl()).toBe("https://sentry.acme.com");
+  });
+
+  it("normalizes a trailing slash on the stored URL", () => {
+    writeToken("t", "https://sentry.acme.com/");
+    expect(resolveApiUrl()).toBe("https://sentry.acme.com");
+  });
+
+  it("still defaults to sentry.io when no URL was given", () => {
+    writeToken("t");
+    expect(resolveApiUrl()).toBe("https://sentry.io");
+  });
+
+  it("lets the environment override the stored URL", () => {
+    // CI sets SENTRY_AXI_URL; it must beat whatever a developer logged into.
+    writeToken("t", "https://sentry.acme.com");
+    vi.stubEnv("SENTRY_AXI_URL", "https://sentry.other.com");
+    expect(resolveApiUrl()).toBe("https://sentry.other.com");
+  });
+});
