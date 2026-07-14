@@ -27,6 +27,17 @@ export interface SuggestionContext {
   seerAvailable?: boolean;
   /** Set when the command produced no results at all. */
   empty?: boolean;
+  /**
+   * Set when the project has **never** received an event (Sentry's
+   * `firstEvent` is null) - which is a completely different problem from "no
+   * issues matched your query", and needs completely different advice.
+   */
+  projectNeverReceivedEvents?: boolean;
+  /** The scope the empty listing was run against, so advice can name it. */
+  project?: string;
+  /** The window and query that came back empty, so we never re-suggest them. */
+  period?: string;
+  query?: string;
 }
 
 export function getSuggestions(ctx: SuggestionContext): string[] {
@@ -43,11 +54,38 @@ export function getSuggestions(ctx: SuggestionContext): string[] {
   // is the single most common place an agent gets stuck and gives up.
   if (ctx.empty) {
     if (ctx.command === "issues" || ctx.command === "search") {
-      return [
-        `Run \`${cli} issues --period 14d\` to widen the time window`,
-        `Run \`${cli} issues --query "is:unresolved"\` to drop any extra filters`,
+      // "No issues matched" and "this project has never received an event" look
+      // identical in the response but need opposite advice. Widening the window
+      // on a project with no SDK wired up will never find anything, and an agent
+      // told to widen will keep widening. Sentry knows which case this is
+      // (`firstEvent`), so say it.
+      if (ctx.projectNeverReceivedEvents) {
+        const name = ctx.project ? ` "${ctx.project}"` : "";
+        return [
+          `The project${name} has never received an event - this is not an empty result, it is an unconfigured project`,
+          "Widening the window will not help. Check that the Sentry SDK is installed and the DSN is set in the app",
+          `Run \`${cli} projects\` to switch to a project that has events (the hasEvents column)`,
+          `Run \`${cli} sendevent --message "wiring test"\` to confirm the DSN works once you have set it`,
+        ];
+      }
+
+      // Never re-suggest the exact window or query that just came back empty -
+      // that is how an agent ends up running the same command twice and
+      // concluding the tool is broken.
+      const out: string[] = [];
+      if (ctx.period !== "14d") {
+        out.push(`Run \`${cli} issues --period 14d\` to widen the time window`);
+      }
+      if (ctx.query && ctx.query !== "is:unresolved" && ctx.query !== "") {
+        out.push(
+          `Run \`${cli} issues --query "is:unresolved"\` to drop the extra filters in "${ctx.query}"`,
+        );
+      }
+      out.push(
+        `Run \`${cli} issues --query "" --period 14d\` to include resolved and ignored issues too`,
         `Run \`${cli} projects\` to confirm you are pointed at the right project`,
-      ];
+      );
+      return out;
     }
     return [`Run \`${cli} issues\` to see what is currently broken`];
   }

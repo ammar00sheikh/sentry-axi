@@ -152,3 +152,58 @@ describe("getSuggestions", () => {
     );
   });
 });
+
+describe("an empty listing: which kind of empty?", () => {
+  // REGRESSION GUARD, found by pointing sentry-axi at a real project ("php")
+  // that has never received an event.
+  //
+  // "No issues matched your query" and "this project has never received an
+  // event" are indistinguishable in the response, but need OPPOSITE advice. The
+  // old suggestions said "widen the window to 14d" - after a 14d query had just
+  // returned nothing - and "drop your extra filters" when there were none. An
+  // agent would widen, find nothing, widen again, and conclude the tool is
+  // broken. Sentry knows which case it is (`firstEvent`), so say it.
+  it("names an unconfigured project instead of telling the agent to widen", () => {
+    const lines = getSuggestions({
+      command: "issues",
+      empty: true,
+      projectNeverReceivedEvents: true,
+      project: "php",
+      period: "24h",
+      query: "is:unresolved",
+    });
+
+    expect(lines[0]).toContain('"php" has never received an event');
+    expect(lines.join(" ")).toContain("DSN");
+    // The crucial negative: widening is precisely the wrong advice here.
+    expect(lines.join(" ")).not.toContain("widen the time window");
+  });
+
+  it("never re-suggests the exact window that just came back empty", () => {
+    // Suggesting `--period 14d` to someone who just ran `--period 14d` is how an
+    // agent ends up running the same command twice.
+    const lines = getSuggestions({
+      command: "issues",
+      empty: true,
+      period: "14d",
+      query: "is:unresolved",
+    });
+
+    expect(lines.join(" ")).not.toContain("--period 14d` to widen");
+    expect(lines.length).toBeGreaterThan(0);
+  });
+
+  it("still offers to widen when the project genuinely has events", () => {
+    const lines = getSuggestions({
+      command: "issues",
+      empty: true,
+      projectNeverReceivedEvents: false,
+      period: "24h",
+      query: "is:unresolved level:fatal",
+    });
+
+    expect(lines.join(" ")).toContain("widen the time window");
+    // ...and names the filters that were actually in play, rather than "any".
+    expect(lines.join(" ")).toContain("is:unresolved level:fatal");
+  });
+});

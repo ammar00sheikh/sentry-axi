@@ -792,6 +792,13 @@ async function renderIssueList(
   issues: SentryIssue[],
   command: "issues" | "search",
   meta: Record<string, unknown>,
+  /**
+   * Only consulted when the listing is empty. "No issues matched your query"
+   * and "this project has never received an event" are indistinguishable in the
+   * response but need opposite advice, and Sentry knows which it is - so on the
+   * empty path (and only there) we spend one extra request to find out.
+   */
+  emptyContext?: { api: SentryApi; period: string; query: string },
 ): Promise<string> {
   const generation = bumpGeneration();
   const minted: Record<string, Ref> = {};
@@ -818,11 +825,24 @@ async function renderIssueList(
 
   writeRefs(generation, minted);
 
+  let neverReceivedEvents = false;
+  if (issues.length === 0 && emptyContext?.api.project) {
+    const project = await getProject(
+      emptyContext.api,
+      emptyContext.api.project,
+    ).catch(() => null);
+    // `firstEvent: null` means no event has EVER reached this project.
+    neverReceivedEvents = project !== null && !project.firstEvent;
+  }
+
   return compose(
     toon({
       [command]: {
         ...meta,
         found: issues.length,
+        ...(neverReceivedEvents
+          ? { projectHasNeverReceivedAnEvent: true }
+          : {}),
         generation: `g${generation}`,
       },
     }),
@@ -833,6 +853,12 @@ async function renderIssueList(
         issues: suggested,
         session: session(),
         empty: issues.length === 0,
+        projectNeverReceivedEvents: neverReceivedEvents,
+        ...(emptyContext?.api.project
+          ? { project: emptyContext.api.project }
+          : {}),
+        ...(emptyContext ? { period: emptyContext.period } : {}),
+        ...(emptyContext ? { query: emptyContext.query } : {}),
       }),
     ),
   );
@@ -852,12 +878,17 @@ async function handleIssues(args: string[]): Promise<string> {
   const api = apiFor();
   const issues = await listIssues(api, { query, period, sort, limit });
 
-  return renderIssueList(issues, "issues", {
-    project: `${api.org}/${api.project}`,
-    query,
-    period,
-    sort,
-  });
+  return renderIssueList(
+    issues,
+    "issues",
+    {
+      project: `${api.org}/${api.project}`,
+      query,
+      period,
+      sort,
+    },
+    { api, period, query },
+  );
 }
 
 async function handleSearch(args: string[]): Promise<string> {
