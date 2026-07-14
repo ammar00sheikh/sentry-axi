@@ -1,0 +1,29 @@
+name: e2e
+
+# Live end-to-end suite: runs the full CLI stack against a real Sentry org over
+# the Sentry HTTP API, using a real auth token. It reads (and, for a few cases,
+# mutates) live issues, so it runs on demand rather than on every push - and the
+# suite skips itself when no SENTRY_AUTH_TOKEN is present.
+on:
+  workflow_dispatch:
+
+jobs:
+  e2e-live:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+      - run: npm run build
+
+      - run: npm run test:e2e
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ vars.SENTRY_E2E_ORG }}
+          SENTRY_PROJECT: ${{ vars.SENTRY_E2E_PROJECT }}
