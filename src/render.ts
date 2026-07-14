@@ -171,6 +171,23 @@ export function renderStacktrace(
     }
   };
 
+  /**
+   * The frame to point the agent at: the topmost frame in the app's own code.
+   *
+   * NOT simply frame 0. In a real .NET or JVM trace the top frames are the
+   * driver/runtime internals that actually raised (SqlClient, EF Core), and
+   * those get collapsed - so anchoring the marker to index 0 made it vanish
+   * entirely, leaving the agent no "start here" signal at all. In a JS trace the
+   * top frame usually IS app code, which is exactly why a JS-only fixture hid
+   * this.
+   *
+   * The topmost in-app frame is the one a developer can act on, and it is what
+   * the marker is for. Fall back to frame 0 when nothing is in-app (a fully
+   * minified or fully-vendor trace).
+   */
+  const anchor = frames.findIndex((frame) => frame.inApp === true);
+  const anchorIndex = anchor === -1 ? 0 : anchor;
+
   frames.forEach((frame, index) => {
     const isApp = frame.inApp === true;
 
@@ -180,14 +197,14 @@ export function renderStacktrace(
     }
     flush();
 
-    const marker = index === 0 ? ">" : " ";
+    const marker = index === anchorIndex ? ">" : " ";
     const fn = frame.function || "<anonymous>";
     const tag = isApp ? "" : "  (lib)";
     lines.push(`  ${marker} ${fn} at ${formatFrameLocation(frame)}${tag}`);
 
     // Source context is the single biggest payload multiplier - opt-in only,
-    // and only for the crashing frame, which is the one worth seeing inline.
-    if (contextLines && index === 0 && frame.context?.length) {
+    // and only for the anchor frame, which is the one worth seeing inline.
+    if (contextLines && index === anchorIndex && frame.context?.length) {
       for (const [lineNo, text] of frame.context) {
         const hit = lineNo === frame.lineNo ? ">" : " ";
         lines.push(`      ${hit} ${lineNo} | ${text}`);

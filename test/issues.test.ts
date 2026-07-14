@@ -130,12 +130,37 @@ describe("listIssues", () => {
     expect(options.limit).toBe(500);
   });
 
-  it("validates the period before issuing a request", async () => {
+  // Sentry's issue endpoints accept ONLY 24h or 14d for statsPeriod - a real
+  // 400 discovered by running against a live instance. A well-formed but
+  // unsupported window like 90d must be caught here, with the actual fix
+  // (filter by age in the query), not shipped as a bare 400 from Sentry.
+  it("rejects a period the issue endpoints do not support, before requesting", async () => {
     const { api, request } = fakeApi();
-    await expect(listIssues(api, { period: "yesterday" })).rejects.toThrow(
-      /Invalid period/,
-    );
+
+    for (const bad of ["90d", "7d", "1h", "yesterday"]) {
+      await expect(listIssues(api, { period: bad })).rejects.toMatchObject({
+        code: "VALIDATION_ERROR",
+      });
+    }
+
     expect(request).not.toHaveBeenCalled();
+  });
+
+  it("tells the agent to filter by age instead of just failing", async () => {
+    const { api } = fakeApi();
+
+    const error = await listIssues(api, { period: "90d" }).catch((e) => e);
+    expect(error.suggestions.join(" ")).toContain("age:+30d");
+  });
+
+  it("accepts both supported windows", async () => {
+    const { api, request } = fakeApi();
+
+    await listIssues(api, { period: "24h" });
+    await listIssues(api, { period: "14d" });
+
+    expect(request.mock.calls[0][1].query.statsPeriod).toBe("24h");
+    expect(request.mock.calls[1][1].query.statsPeriod).toBe("14d");
   });
 
   it("fails with NO_PROJECT, not a bad URL, when no project is pinned", async () => {
@@ -158,11 +183,11 @@ describe("searchIssues", () => {
     // This is the "is this error happening anywhere else" question, so it must
     // deliberately drop the pinned project from the path.
     const { api, request } = fakeApi();
-    await searchIssues(api, { query: "TypeError", period: "7d" });
+    await searchIssues(api, { query: "TypeError", period: "14d" });
     expect(request).toHaveBeenCalledWith("/organizations/acme/issues/", {
       query: {
         query: "TypeError",
-        statsPeriod: "7d",
+        statsPeriod: "14d",
         sort: "freq",
         limit: 25,
       },

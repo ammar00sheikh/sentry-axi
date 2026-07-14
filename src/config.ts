@@ -247,15 +247,26 @@ export function resolveScope(
 
 /**
  * Full config for a command that needs to talk to Sentry. Throws a structured
- * error - never a bare 401 later - when the token or org is missing.
+ * error - never a bare 401 later - when something it needs is missing.
  *
- * `requireProject: false` is for org-wide commands (`orgs`, `projects`).
+ * `requireProject: false` is for org-wide commands (`projects`, `search`).
+ *
+ * `requireOrg: false` is for the bootstrap command `orgs`, which hits
+ * `/organizations/` and needs no scope at all. Requiring an org there produced a
+ * **circular dead end**: `orgs` failed with "no organization configured", and its
+ * own recovery suggestion was to run `sentry-axi orgs`. An agent following the
+ * suggestions could never escape - which is the worst failure an AXI can have,
+ * because the suggestions are the thing it is supposed to be able to trust.
  */
 export function requireConfig(
   overrides: Scope = { org: null, project: null },
-  options: { requireProject?: boolean; session?: string } = {},
+  options: {
+    requireOrg?: boolean;
+    requireProject?: boolean;
+    session?: string;
+  } = {},
 ): ResolvedConfig {
-  const { requireProject = true, session } = options;
+  const { requireOrg = true, requireProject = true, session } = options;
 
   const token = resolveToken(session);
   if (!token) {
@@ -269,7 +280,7 @@ export function requireConfig(
 
   const scope = resolveScope(overrides, session);
 
-  if (!scope.org) {
+  if (requireOrg && !scope.org) {
     throw new SentryAxiError(
       "No Sentry organization configured",
       "NO_PROJECT",
@@ -292,7 +303,9 @@ export function requireConfig(
   return {
     token,
     url: resolveApiUrl(),
-    org: scope.org,
+    // Empty only when requireOrg is false, i.e. for `orgs`, whose endpoint is
+    // org-independent and never interpolates this.
+    org: scope.org ?? "",
     project: scope.project,
   };
 }

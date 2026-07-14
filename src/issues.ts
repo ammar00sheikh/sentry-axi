@@ -29,15 +29,43 @@ const DEFAULT_LIMIT = 25;
 
 const VALID_SORTS = new Set(["date", "new", "freq", "user", "trends"]);
 
-/** Sentry accepts `<n>[mhdw]`; reject anything else before spending a request. */
+/**
+ * Shape check for the endpoints that take an arbitrary window (Discover, stats):
+ * Sentry accepts `<n>[mhdw]` there. Reject anything else before spending a
+ * request.
+ */
 export function validatePeriod(period: string): string {
   if (!/^\d+[mhdw]$/.test(period)) {
     throw validationError(
       `Invalid period "${period}"`,
-      "Use a number followed by m/h/d/w, e.g. --period 24h, --period 14d",
+      "Use a number followed by m/h/d/w, e.g. --period 24h, --period 7d",
     );
   }
   return period;
+}
+
+/**
+ * The issues endpoints are stricter than the rest of the API: `statsPeriod`
+ * there accepts **only** `24h` or `14d` (it sizes the sparkline, not the
+ * filter). Passing `90d` earns a 400 from Sentry.
+ *
+ * That is a trap worth catching locally, because the fix is not "pick a smaller
+ * window" - it is "filter by age in the query instead", which is a different
+ * concept entirely and one an agent will not guess from a raw 400.
+ */
+export const VALID_ISSUE_PERIODS = ["24h", "14d"] as const;
+
+export function validateIssuePeriod(period: string): string {
+  if ((VALID_ISSUE_PERIODS as readonly string[]).includes(period)) {
+    return period;
+  }
+
+  throw validationError(
+    `Sentry's issue endpoints only accept --period ${VALID_ISSUE_PERIODS.join(" or ")} (got "${period}")`,
+    "Use `--period 24h` or `--period 14d`",
+    'To reach further back, filter by age in the query instead: `--query "is:unresolved age:+30d"` (first seen over 30 days ago)',
+    'Or by last occurrence: `--query "is:unresolved lastSeen:-90d"` (seen within the last 90 days)',
+  );
 }
 
 export function validateSort(sort: string): string {
@@ -72,7 +100,7 @@ export async function listIssues(
     {
       query: {
         query,
-        statsPeriod: validatePeriod(period),
+        statsPeriod: validateIssuePeriod(period),
         sort: validateSort(sort),
         limit: Math.min(limit, 100),
       },
@@ -101,7 +129,7 @@ export async function searchIssues(
   return api.request<SentryIssue[]>(`/organizations/${api.org}/issues/`, {
     query: {
       query,
-      statsPeriod: validatePeriod(period),
+      statsPeriod: validateIssuePeriod(period),
       sort: validateSort(sort),
       limit: Math.min(limit, 100),
     },

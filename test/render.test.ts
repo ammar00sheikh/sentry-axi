@@ -281,3 +281,88 @@ describe("formatTime", () => {
     expect(formatTime("garbage")).toBe("garbage");
   });
 });
+
+describe("renderStacktrace: the crash marker anchors to app code", () => {
+  // REGRESSION GUARD, found by running against a real .NET (HaramCore) trace.
+  //
+  // The `>` marker used to anchor to frame 0. In a JS trace frame 0 is usually
+  // app code, so that looked right - but in a .NET/JVM trace the top frames are
+  // driver internals (SqlClient, EF Core) which get collapsed, so the marker
+  // vanished completely and the agent was handed a stack with no "start here".
+  //
+  // It must anchor to the topmost IN-APP frame: the one a developer can act on.
+  const dotnet: SentryException = {
+    type: "SqlException",
+    value: "Subquery returned more than 1 value.",
+    stacktrace: {
+      // Sentry order: oldest caller first, thrower last.
+      frames: [
+        {
+          filename: "Controllers/HalaqatSectionsController.cs",
+          function: "GetHalaqaStudents",
+          lineNo: 159,
+          inApp: true,
+        },
+        {
+          filename: "Services/HalaqatSectionService.cs",
+          function: "GetHalaqaStudentsCombinedAsync",
+          lineNo: 133,
+          inApp: true,
+        },
+        {
+          filename: "Repositories/HalaqatSectionRepository.cs",
+          function: "GetHalaqaStudentsCombinedAsync",
+          lineNo: 301,
+          inApp: true,
+        },
+        {
+          module: "Microsoft.EntityFrameworkCore",
+          function: "Execute",
+          lineNo: 1,
+          inApp: false,
+        },
+        {
+          module: "Microsoft.Data.SqlClient",
+          function: "OnError",
+          lineNo: 2,
+          inApp: false,
+        },
+      ],
+    },
+  };
+
+  it("marks the topmost in-app frame, not the collapsed library frame on top", () => {
+    const lines = renderStacktrace(dotnet).split("\n");
+
+    // The vendor frames collapse first...
+    expect(lines[0]).toContain("... 2 library frames");
+    // ...and the marker lands on the deepest frame that is actually our code.
+    expect(lines[1]).toContain(">");
+    expect(lines[1]).toContain("HalaqatSectionRepository.cs:301");
+
+    // Exactly one anchor.
+    expect(lines.filter((l) => l.trim().startsWith(">"))).toHaveLength(1);
+  });
+
+  it("still marks frame 0 when the top frame IS app code (the JS case)", () => {
+    const lines = renderStacktrace(extractExceptions(event)[0]).split("\n");
+    expect(lines[0]).toContain(">");
+    expect(lines[0]).toContain("UserCard");
+  });
+
+  it("falls back to the first frame when nothing is in-app", () => {
+    const vendorOnly: SentryException = {
+      type: "Error",
+      stacktrace: {
+        frames: [
+          { filename: "b.js", function: "outer", lineNo: 2, inApp: false },
+          { filename: "a.js", function: "inner", lineNo: 1, inApp: false },
+        ],
+      },
+    };
+    // --full so the frames render rather than collapsing.
+    const lines = renderStacktrace(vendorOnly, { full: true }).split("\n");
+    expect(lines[0]).toContain(">");
+    expect(lines[0]).toContain("inner");
+  });
+});

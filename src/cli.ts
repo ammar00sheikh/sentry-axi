@@ -35,6 +35,7 @@ import {
   resolveShortId,
   searchIssues,
   setIssueStatus,
+  validateIssuePeriod,
   validatePeriod,
   validateSort,
 } from "./issues.js";
@@ -194,14 +195,17 @@ List issues in the current project. Mints @<uid> refs for every issue.
 
 flags:
   --query <q>   Sentry search syntax (default: "is:unresolved")
-  --period <p>  Time window: 1h, 24h, 14d, 90d (default: 24h)
+  --period <p>  Stats window: 24h or 14d only (Sentry's issue endpoints
+                accept nothing else). To reach further back, filter by age in
+                the query: --query "is:unresolved age:+30d" (default: 24h)
   --sort <s>    date | new | freq | user | trends (default: freq)
   --limit <n>   Max issues to return (default: 25)
 
 examples:
   sentry-axi issues
   sentry-axi issues --query "is:unresolved is:unassigned" --sort user
-  sentry-axi issues --query "release:4.2.0" --period 7d
+  sentry-axi issues --query "release:4.2.0" --period 14d
+  sentry-axi issues --query "is:unresolved age:+30d"   # first seen >30d ago
   sentry-axi issues --query "is:unresolved level:fatal" --limit 5`,
 
   search: `usage: sentry-axi search <query> [--period <p>] [--sort <s>] [--limit <n>]
@@ -514,7 +518,9 @@ function readPackageVersion(): string {
 
 const GLOBAL_BOOLEANS = ["full"] as const;
 
-function apiFor(options: { requireProject?: boolean } = {}): SentryApi {
+function apiFor(
+  options: { requireOrg?: boolean; requireProject?: boolean } = {},
+): SentryApi {
   const config = requireConfig({ org: null, project: null }, options);
   return new SentryApi(config);
 }
@@ -656,7 +662,9 @@ async function handleUse(args: string[]): Promise<string> {
 }
 
 async function handleOrgs(): Promise<string> {
-  const api = apiFor({ requireProject: false });
+  // The bootstrap command: it must work with a token and nothing else, because
+  // it is how you find out what to put in `use`.
+  const api = apiFor({ requireOrg: false, requireProject: false });
   const orgs = await listOrgs(api);
 
   return compose(
@@ -723,13 +731,16 @@ async function handleDoctor(): Promise<string> {
 
   const cliVersion = await sentryCliVersion();
 
-  let reachable = "not checked";
-  if (token && scope.org) {
+  // Probing needs only a token: /organizations/ is org-independent. Gating this
+  // on a resolved org meant doctor reported "not checked" in exactly the state
+  // where you most need to know whether the token works at all.
+  let reachable = "not checked (no token)";
+  if (token) {
     try {
       const api = new SentryApi({
         token,
         url,
-        org: scope.org,
+        org: scope.org ?? "",
         project: scope.project,
       });
       await listOrgs(api);
@@ -834,7 +845,7 @@ async function handleIssues(args: string[]): Promise<string> {
   const parsed = parseArgs(args, GLOBAL_BOOLEANS);
 
   const query = flagString(parsed, "query") ?? "is:unresolved";
-  const period = validatePeriod(flagString(parsed, "period") ?? "24h");
+  const period = validateIssuePeriod(flagString(parsed, "period") ?? "24h");
   const sort = validateSort(flagString(parsed, "sort") ?? "freq");
   const limit = flagInt(parsed, "limit", 25);
 
@@ -858,7 +869,7 @@ async function handleSearch(args: string[]): Promise<string> {
     "<query>",
     'Example: sentry-axi search "is:unresolved TypeError"',
   );
-  const period = validatePeriod(flagString(parsed, "period") ?? "24h");
+  const period = validateIssuePeriod(flagString(parsed, "period") ?? "24h");
   const sort = validateSort(flagString(parsed, "sort") ?? "freq");
   const limit = flagInt(parsed, "limit", 25);
 
