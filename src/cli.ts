@@ -100,7 +100,7 @@ const VERSION = readPackageVersion();
 const MAX_LINES = 60;
 
 export const TOP_HELP = `usage: sentry-axi [command] [args] [flags]
-commands[27]:
+commands[28]:
   login --token <t>, use <org>/<project>, orgs, projects, doctor,
   issues, search <query>, issue @<ref>, stacktrace @<ref>,
   breadcrumbs @<ref>, tags @<ref>, events @<ref>, event @<ref> <id>,
@@ -452,11 +452,21 @@ export function formatError(error: unknown): {
 } {
   const exitCode = exitCodeForError(error);
 
+  // Never render an error with no way forward. Most throw sites supply their own
+  // suggestions, but a bare `new SentryAxiError(msg, code)` would otherwise
+  // print a dead end - and a dead-ended agent stops, or guesses.
+  const fallback = [
+    "Run `sentry-axi doctor` to check auth, scope, and connectivity",
+  ];
+
   if (error instanceof AxiError) {
+    const suggestions =
+      error.suggestions.length > 0 ? error.suggestions : fallback;
+
     return {
       output: `${compose(
         toon({ error: error.message, code: error.code }),
-        helpBlock(error.suggestions),
+        helpBlock(suggestions),
       )}\n`,
       exitCode,
     };
@@ -466,9 +476,7 @@ export function formatError(error: unknown): {
   return {
     output: `${compose(
       toon({ error: message, code: "UNKNOWN" }),
-      helpBlock([
-        "Run `sentry-axi doctor` to check auth, scope, and connectivity",
-      ]),
+      helpBlock(fallback),
     )}\n`,
     exitCode,
   };
@@ -2009,6 +2017,14 @@ const COMMANDS: Record<string, CommandFn> = {
 
   setup: handleSetup,
 };
+
+/**
+ * Every command sentry-axi registers. Exported so the AXI checklist can be
+ * enforced as a test rather than a promise: each name here must have a
+ * `COMMAND_HELP` entry and must appear in TOP_HELP's `commands[N]:` block,
+ * which is itself the block `src/skill.ts` lifts into the generated SKILL.md.
+ */
+export const COMMAND_NAMES: string[] = Object.keys(COMMANDS);
 
 export type MainOptions = {
   argv?: string[];

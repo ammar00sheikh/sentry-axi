@@ -43,7 +43,7 @@ Skip it for local errors you can reproduce and read directly; Sentry only knows 
 ## Commands
 
 ```
-commands[27]:
+commands[28]:
   login --token <t>, use <org>/<project>, orgs, projects, doctor,
   issues, search <query>, issue @<ref>, stacktrace @<ref>,
   breadcrumbs @<ref>, tags @<ref>, events @<ref>, event @<ref> <id>,
