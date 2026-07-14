@@ -1,0 +1,63 @@
+{
+  "name": "sentry-axi",
+  "version": "0.1.0",
+  "description": "AXI-compliant Sentry CLI: issue triage, stack traces, Seer root-cause analysis, releases, sourcemaps, performance stats, TOON output, contextual suggestions",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ammar00sheikh/sentry-axi.git"
+  },
+  "bugs": {
+    "url": "https://github.com/ammar00sheikh/sentry-axi/issues"
+  },
+  "homepage": "https://github.com/ammar00sheikh/sentry-axi#readme",
+  "keywords": [
+    "sentry",
+    "errors",
+    "observability",
+    "debugging",
+    "stacktrace",
+    "seer",
+    "cli",
+    "agent",
+    "axi",
+    "toon",
+    "mcp"
+  ],
+  "bin": {
+    "sentry-axi": "dist/bin/sentry-axi.js"
+  },
+  "files": [
+    "dist",
+    "skills/sentry-axi",
+    "LICENSE",
+    "README.md"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsc && node -e \"fs.chmodSync('dist/bin/sentry-axi.js', 0o755)\"",
+    "build:skill": "tsx scripts/build-skill.ts",
+    "dev": "tsx bin/sentry-axi.ts",
+    "test": "vitest run --dir test",
+    "test:watch": "vitest --dir test",
+    "test:e2e": "vitest run --dir e2e --no-file-parallelism --testTimeout 300000 --hookTimeout 300000",
+    "prepublishOnly": "npm run build"
+  },
+  "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@toon-format/toon": "^2.1.0",
+    "axi-sdk-js": "^0.1.8"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "prettier": "^3.8.3",
+    "tsx": "^4.0.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0"
+  }
+}

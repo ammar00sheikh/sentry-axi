@@ -1,0 +1,6 @@
+dist/
+node_modules/
+bench/node_modules/
+bench/results/
+CHANGELOG.md
+skills/sentry-axi/SKILL.md

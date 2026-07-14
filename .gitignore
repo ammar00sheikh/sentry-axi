@@ -1,0 +1,7 @@
+node_modules/
+dist/
+bench/node_modules/
+bench/results/
+*.log
+.DS_Store
+nohup.out
