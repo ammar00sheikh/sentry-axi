@@ -1,9 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   extractInsights,
+  getSeerState,
   isTerminal,
   parseSeerState,
   runSeer,
+  startSeer,
   type SeerResponse,
   type SeerStep,
 } from "../src/seer.js";
@@ -291,5 +293,55 @@ describe("runSeer", () => {
     }));
     const state = await runSeer(api, "4509172", { sleep: noSleep });
     expect(state.status).toBe("ERROR");
+  });
+});
+
+describe("Seer on an instance where it is switched off", () => {
+  // REGRESSION GUARD, found on a live self-hosted Sentry with Seer disabled.
+  //
+  // Sentry answers "Seer is not turned on" with a 403 reading
+  // `Seer permission error: Feature flag not enabled`. The generic status mapper
+  // calls any 403 AUTH_INVALID and advises re-issuing the token with more
+  // scopes - advice that can NEVER work, because no token scope enables a
+  // feature flag. An agent following that suggestion regenerates tokens forever.
+  const forbidden = () => {
+    const request = vi.fn(async () => {
+      throw new SentryAxiError(
+        "Auth token lacks permission for this request: Seer permission error: Feature flag not enabled",
+        "AUTH_INVALID",
+        ["The token needs scopes: org:read, project:read"],
+      );
+    });
+    return { org: "acme", project: "p", request } as unknown as SentryApi;
+  };
+
+  it("reports SEER_UNAVAILABLE from the GET, which runSeer calls first", async () => {
+    // Gating the translation on the POST alone was the actual bug: runSeer GETs
+    // the current state before it ever starts a run, so the misleading 403
+    // escaped untranslated.
+    const error = await getSeerState(forbidden(), "4509").catch((e) => e);
+
+    expect(error.code).toBe("SEER_UNAVAILABLE");
+    expect(error.suggestions.join(" ")).toContain(
+      "feature flag, not a token scope",
+    );
+    expect(error.suggestions.join(" ")).not.toContain("Re-issue the token");
+  });
+
+  it("reports SEER_UNAVAILABLE from the POST too", async () => {
+    const error = await startSeer(forbidden(), "4509").catch((e) => e);
+    expect(error.code).toBe("SEER_UNAVAILABLE");
+  });
+
+  it("points the agent at a diagnosis path that actually works", async () => {
+    const error = await getSeerState(forbidden(), "4509").catch((e) => e);
+    expect(error.suggestions.join(" ")).toMatch(/stacktrace|suspect/);
+  });
+
+  it("surfaces through runSeer rather than being swallowed", async () => {
+    const error = await runSeer(forbidden(), "4509", {
+      sleep: async () => undefined,
+    }).catch((e) => e);
+    expect(error.code).toBe("SEER_UNAVAILABLE");
   });
 });

@@ -131,6 +131,51 @@ export function extractInsights(step: SeerStep): string[] {
   return out;
 }
 
+/**
+ * Translate a Seer 4xx into SEER_UNAVAILABLE.
+ *
+ * Sentry answers "Seer is not turned on for this org" with a **403** whose body
+ * reads `Seer permission error: Feature flag not enabled`. The generic status
+ * mapper quite reasonably calls a 403 AUTH_INVALID and tells you to re-issue
+ * your token with more scopes - which is advice that can never work, because no
+ * token scope enables a feature flag. An agent following it would regenerate
+ * tokens forever.
+ *
+ * This must wrap **every** Seer call, not just the POST: `runSeer` GETs the
+ * current state first, so gating the translation on the POST alone meant the
+ * misleading 403 escaped before the mapping ever ran. That is precisely the bug
+ * a self-hosted instance (where Seer is off) exposed.
+ */
+function asSeerError(error: unknown, issueId: string): unknown {
+  if (
+    error instanceof SentryAxiError &&
+    (error.code === "API_ERROR" ||
+      error.code === "AUTH_INVALID" ||
+      error.code === "NOT_FOUND")
+  ) {
+    const disabled = /feature flag|not enabled|permission error/i.test(
+      error.message,
+    );
+
+    return new SentryAxiError(
+      `Seer is not available for issue ${issueId}: ${error.message}`,
+      "SEER_UNAVAILABLE",
+      disabled
+        ? [
+            "Seer is not enabled on this Sentry instance - this is a feature flag, not a token scope, so re-issuing the token will not help",
+            "Enable it in Sentry under Settings > Seer (Sentry SaaS), or leave it off",
+            `Run \`sentry-axi stacktrace short:<SHORT-ID>\` and \`sentry-axi suspect\` to diagnose it yourself instead`,
+          ]
+        : [
+            "Seer needs the issue to have a recent event with a stack trace",
+            "Run `sentry-axi stacktrace @<ref>` to inspect the trace yourself instead",
+          ],
+    );
+  }
+
+  return error;
+}
+
 /** Start a Seer run. Safe to call on an issue that already has one. */
 export async function startSeer(
   api: SentryApi,
@@ -142,23 +187,7 @@ export async function startSeer(
       body: { instruction: "" },
     });
   } catch (error) {
-    // A 400/403 here almost always means Seer is not enabled for the org
-    // rather than a malformed request - say so instead of echoing a raw 4xx.
-    if (
-      error instanceof SentryAxiError &&
-      (error.code === "API_ERROR" || error.code === "AUTH_INVALID")
-    ) {
-      throw new SentryAxiError(
-        `Seer could not be started for issue ${issueId}: ${error.message}`,
-        "SEER_UNAVAILABLE",
-        [
-          "Confirm Seer is enabled for the org at https://sentry.io/settings/<org>/seer/",
-          "Seer needs the issue to have a recent event with a stack trace",
-          "Run `sentry-axi stacktrace @<ref>` to inspect the trace yourself instead",
-        ],
-      );
-    }
-    throw error;
+    throw asSeerError(error, issueId);
   }
 }
 
@@ -166,10 +195,14 @@ export async function getSeerState(
   api: SentryApi,
   issueId: string,
 ): Promise<SeerState> {
-  const response = await api.request<SeerResponse>(
-    `/issues/${encodeURIComponent(issueId)}/autofix/`,
-  );
-  return parseSeerState(response);
+  try {
+    const response = await api.request<SeerResponse>(
+      `/issues/${encodeURIComponent(issueId)}/autofix/`,
+    );
+    return parseSeerState(response);
+  } catch (error) {
+    throw asSeerError(error, issueId);
+  }
 }
 
 export interface RunSeerOptions {

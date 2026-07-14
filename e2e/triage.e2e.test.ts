@@ -46,7 +46,7 @@ describeLive("live: config", () => {
 
 describeLive("live: the triage loop", () => {
   it("issues lists issues and mints usable refs", async () => {
-    const result = await run("issues", "--period", "90d", "--limit", "5");
+    const result = await run("issues", "--period", "14d", "--limit", "5");
 
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain("issues:");
@@ -56,7 +56,7 @@ describeLive("live: the triage loop", () => {
   it("a ref minted by `issues` resolves in a later, separate process", async () => {
     // This is the whole point of the on-disk refs registry: the listing and the
     // action are different short-lived processes.
-    const listing = await run("issues", "--period", "90d", "--limit", "5");
+    const listing = await run("issues", "--period", "14d", "--limit", "5");
     const uids = extractUids(listing.stdout);
 
     if (uids.length === 0) {
@@ -71,7 +71,7 @@ describeLive("live: the triage loop", () => {
   });
 
   it("stacktrace renders frames for a real event", async () => {
-    const listing = await run("issues", "--period", "90d", "--limit", "5");
+    const listing = await run("issues", "--period", "14d", "--limit", "5");
     const uids = extractUids(listing.stdout);
 
     if (uids.length === 0) {
@@ -89,7 +89,7 @@ describeLive("live: the triage loop", () => {
   });
 
   it("addresses an issue by short id, with no listing first", async () => {
-    const listing = await run("issues", "--period", "90d", "--limit", "1");
+    const listing = await run("issues", "--period", "14d", "--limit", "1");
     const shortId = listing.stdout.match(/,([A-Z0-9]+-[A-Z0-9]+),/)?.[1];
 
     if (!shortId) {
@@ -140,7 +140,7 @@ const describeMutating =
 
 describeMutating("live: mutations (guarded)", () => {
   it("resolve is idempotent and restores state afterwards", async () => {
-    const listing = await run("issues", "--period", "90d", "--limit", "1");
+    const listing = await run("issues", "--period", "14d", "--limit", "1");
     const uids = extractUids(listing.stdout);
 
     if (uids.length === 0) {
@@ -179,7 +179,7 @@ describeMutating("live: mutations (guarded)", () => {
   });
 
   it("unresolve reopens a resolved issue", async () => {
-    const listing = await run("issues", "--period", "90d", "--limit", "1");
+    const listing = await run("issues", "--period", "14d", "--limit", "1");
     const uids = extractUids(listing.stdout);
 
     if (uids.length === 0) {
