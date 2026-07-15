@@ -161,9 +161,26 @@ The [`bench/`](bench/) harness exists to *test* that claim rather than assert it
 
 ## Benchmarks
 
-The harness in [`bench/`](bench/) replicates the [axi](https://github.com/kunchenguid/axi) methodology: real Sentry triage tasks run through both `sentry-axi` and Sentry's official remote MCP server, with an LLM judge scoring task success against a live Sentry project.
+Agent ergonomics is measurable, and the whole point of an AXI is token efficiency: the same backend data should cost an agent far fewer tokens as sentry-axi's rendered output than as the raw payload it is derived from.
 
-**No results are published yet.** They will be committed here after a full `matrix` run, from [`bench/published-results/`](bench/published-results/). This README will not carry a comparison table until those numbers come from an actual run — see [`bench/README.md`](bench/README.md) for the methodology and its fairness caveats (notably: mutating tasks like `resolve` snapshot and restore issue state between repeats, and the benchmark refuses to run against anything but a dedicated throwaway project).
+### Token efficiency (measured)
+
+Measured against a live Sentry instance — a real .NET project with 24 unresolved issues and an 11-frame stack trace. For each operation we tokenized both what sentry-axi prints (the text the agent reads) and the raw Sentry Web API JSON for the *same data* (what a raw-JSON MCP tool, or direct API access, would feed the agent):
+
+| Operation                        | Raw API tokens | sentry-axi tokens | Reduction |
+| -------------------------------- | -------------: | ----------------: | --------: |
+| List issues (24 issues)          |         12,239 |             1,608 |   **87%** |
+| Issue detail + top tags          |          1,747 |               350 |   **80%** |
+| Stack trace (1 event, 11 frames) |         12,775 |               641 |   **95%** |
+| **Total**                        |     **26,761** |         **2,599** |   **90%** |
+
+**The raw payloads cost 10.3× the tokens** of sentry-axi's output for the same information. The stack trace is the extreme case: a single Sentry event is ~42KB of JSON — every frame carries `vars`, source context, module paths, and redundant id fields — which sentry-axi collapses to the app-code frames an engineer can act on. The listing case is TOON's tabular encoding stating field names once instead of per-row.
+
+These numbers are real and reproducible — the exact capture-and-tokenize steps and the raw/rendered artifacts are in [`bench/published-results/token-efficiency.md`](bench/published-results/token-efficiency.md).
+
+### Full agent-task study (pending)
+
+Token efficiency is the core of the claim but not the whole story. The end-to-end study — **turns, cost, wall-clock, and task success rate** for an agent driving sentry-axi versus Sentry's official [remote MCP server](https://mcp.sentry.dev), scored by an LLM judge — is implemented in [`bench/`](bench/) (replicating the [axi](https://github.com/kunchenguid/axi) methodology) but **has not been run yet**. It executes mutating tasks (`resolve`, `assign`), so it refuses to run against anything but a dedicated throwaway project, and snapshots/restores issue state between repeats. When it runs, its numbers land in [`bench/published-results/`](bench/published-results/) beside the token measurement above — this README will not carry fabricated agent-task numbers before then.
 
 ## Other Ways to Install
 
