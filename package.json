@@ -1,6 +1,6 @@
 {
   "name": "sentry-axi",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "AXI-compliant Sentry CLI: issue triage, stack traces, Seer root-cause analysis, releases, sourcemaps, performance stats, TOON output, contextual suggestions",
   "type": "module",
   "repository": {
