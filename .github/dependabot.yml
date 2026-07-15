@@ -15,6 +15,13 @@ updates:
         dependency-type: development
       production-dependencies:
         dependency-type: production
+    ignore:
+      # typescript 7.x is the native compiler-port preview. It cannot resolve
+      # @types/node under this project's Node16 module resolution and breaks the
+      # `tsc` emit build (verified). Stay on 5.x until 7.x is production-ready;
+      # without this rule Dependabot re-proposes the breaking bump every week.
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
     commit-message:
       # Conventional commits, so release-please attributes the bump correctly.
       # Dev-dependency bumps use `chore:` so they never trigger a release on
@@ -29,6 +36,10 @@ updates:
     schedule:
       interval: monthly
     open-pull-requests-limit: 2
+    ignore:
+      # Same as the root: keep bench on TypeScript 5.x, not the 7.x native preview.
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
     commit-message:
       prefix: chore
       include: scope
